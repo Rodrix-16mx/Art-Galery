@@ -1,3 +1,5 @@
+#instalacion streamlist
+!pip install pymongo dnspython streamlit pandas
 # -*- coding: utf-8 -*-
 """Untitled7.ipynb
 
