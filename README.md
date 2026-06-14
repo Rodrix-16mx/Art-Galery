@@ -1,0 +1,215 @@
+%%writefile app.py
+
+#importar librerias
+import streamlit as st
+from pymongo import MongoClient
+import pandas as pd
+from datetime import datetime
+
+# CONEXION A MONGODB ATLAS
+# IMPORTANT: Replace 'YOUR_MONGODB_PASSWORD' with your actual MongoDB Atlas password.
+# For better security, consider using Streamlit secrets (st.secrets) or environment variables.
+# Please ensure you replace 'ALPHA_R0m30' with your actual password.
+URI = "mongodb+srv://Rodrix09:ALPHA_R0m30@cluster0.ulnmym5.mongodb.net/?appName=Cluster0"
+@st.cache_resource
+def init_connection():
+    return MongoClient(URI)
+
+try:
+    cliente = init_connection()
+    db = cliente["Art"]
+    Obras = db["Obras"]
+    Autores = db["Autores"]
+    registros = db["registros"]
+
+except Exception as e:
+    st.error(f"Error al conectar con MongoDB: {e}")
+    st.exception(e) # Add st.exception to display the full traceback
+
+# CONFIGURACION STREAMLIT
+
+st.set_page_config(
+    page_title="Galería de Arte",
+    layout="wide"
+)
+
+st.title("🎨 Sistema Galería de Arte")
+
+st.write(
+    "Administración de Obras, Autores y Registros"
+)
+
+# TABS
+
+tab_ver_obras, tab_autores, tab_registros, tab_agregar_obra, tab_editar_obra, tab_eliminar_obra = st.tabs([
+    "🎨 Ver Obras",
+    "👨‍🎨 Autores",
+    "📋 Registros",
+    "➕ Agregar Obra",
+    "✏️ Editar Obra",
+    "❌ Eliminar Obra"
+])
+
+# TAB VER OBRAS
+with tab_ver_obras:
+    st.header("Listado de Obras")
+
+    documentos_obras = list(Obras.find())
+
+    if documentos_obras:
+        df_obras = pd.DataFrame(documentos_obras)
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total de Obras", len(df_obras))
+        col2.metric("Valor Promedio", f"${df_obras['valor_estimado'].mean():,.0f}")
+        col3.metric("Autores Diferentes", df_obras["autor_id"].nunique())
+
+        st.markdown("---")
+
+        st.subheader("Obras por Tipo")
+        st.bar_chart(df_obras["tipo"].value_counts())
+
+        st.subheader("Obras por Estado")
+        st.bar_chart(df_obras["estado"].value_counts())
+
+        st.subheader("Tabla de Obras")
+        st.dataframe(df_obras)
+
+    else:
+        st.info("No existen obras registradas.")
+
+# TAB AUTORES
+with tab_autores:
+    st.header("Listado de Autores")
+
+    documentos_autores = list(Autores.find())
+
+    if documentos_autores:
+        df_autores = pd.DataFrame(documentos_autores)
+
+        st.subheader("Autores por Especialidad")
+        st.bar_chart(df_autores["especialidad"].value_counts())
+
+        st.subheader("Autores Reconocidos")
+        st.bar_chart(df_autores["reconocido"].value_counts())
+
+        st.subheader("Tabla de Autores")
+        st.dataframe(df_autores)
+
+    else:
+        st.info("No existen autores registrados.")
+
+# TAB REGISTROS
+with tab_registros:
+    st.header("Historial de Registros")
+
+    documentos_registros = list(registros.find())
+
+    if documentos_registros:
+        df_registros = pd.DataFrame(documentos_registros)
+
+        st.subheader("Registros por Prioridad")
+        st.bar_chart(df_registros["prioridad"].value_counts())
+
+        st.subheader("Tabla de Registros")
+        st.dataframe(df_registros)
+
+    else:
+        st.info("No existen registros.")
+
+# TAB AGREGAR OBRA
+with tab_agregar_obra:
+    st.header("Registrar Nueva Obra")
+
+    with st.form("form_crear_obra"):
+        col1, col2 = st.columns(2)
+        with col1:
+            id_obra = st.number_input("ID Obra", min_value=1, step=1)
+            titulo = st.text_input("Título")
+            tipo = st.selectbox("Tipo", ["Pintura", "Escultura", "Fotografia", "Arte Digital"])
+            anio = st.number_input("Año", min_value=1900, max_value=2030)
+        with col2:
+            valor = st.number_input("Valor Estimado", min_value=0)
+            estado = st.selectbox("Estado", ["Excelente", "Bueno", "Regular"])
+            autor_id = st.number_input("ID Autor", min_value=1)
+            ubicacion = st.text_input("Ubicación")
+
+        guardar = st.form_submit_button("Guardar Obra")
+
+        if guardar:
+            if titulo.strip() == "":
+                st.error("El título no puede estar vacío.")
+            else:
+                nueva_obra = {
+                    "_id": int(id_obra),
+                    "titulo": titulo,
+                    "tipo": tipo,
+                    "año": int(anio),
+                    "valor_estimado": int(valor),
+                    "estado": estado,
+                    "autor_id": int(autor_id),
+                    "ubicacion": ubicacion
+                }
+                Obras.insert_one(nueva_obra)
+                st.success("✅ Obra agregada correctamente")
+                st.rerun()
+
+# TAB EDITAR OBRA
+with tab_editar_obra:
+    st.header("Modificar Obra Existente")
+
+    documentos_obras = list(Obras.find())
+
+    if documentos_obras:
+        opciones_obras = {
+            f"{doc['titulo']} (ID {doc['_id']})": doc
+            for doc in documentos_obras
+        }
+        seleccion_obra = st.selectbox("Selecciona una obra para editar", opciones_obras.keys())
+        obra_actual = opciones_obras[seleccion_obra]
+
+        with st.form("form_editar_obra"):
+            edit_titulo = st.text_input("Título", value=obra_actual["titulo"])
+            edit_valor = st.number_input("Valor Estimado", value=int(obra_actual["valor_estimado"]))
+            edit_estado = st.selectbox("Estado", ["Excelente", "Bueno", "Regular"], index=["Excelente", "Bueno", "Regular"].index(obra_actual["estado"]))
+            edit_ubicacion = st.text_input("Ubicación", value=obra_actual["ubicacion"])
+
+            actualizar_obra = st.form_submit_button("Actualizar Obra")
+
+            if actualizar_obra:
+                Obras.update_one(
+                    {"_id": obra_actual["_id"]},
+                    {
+                        "$set": {
+                            "titulo": edit_titulo,
+                            "valor_estimado": edit_valor,
+                            "estado": edit_estado,
+                            "ubicacion": edit_ubicacion
+                        }
+                    }
+                )
+                st.success("✏️ Obra actualizada")
+                st.rerun()
+    else:
+        st.info("No hay obras disponibles para editar.")
+
+# TAB ELIMINAR OBRA
+with tab_eliminar_obra:
+    st.header("Eliminar Obra")
+
+    documentos_obras = list(Obras.find())
+
+    if documentos_obras:
+        opciones_obras = {
+            f"{doc['titulo']} (ID {doc['_id']})": doc
+            for doc in documentos_obras
+        }
+        seleccion_obra_eliminar = st.selectbox("Selecciona la obra para eliminar", opciones_obras.keys())
+        obra_a_eliminar = opciones_obras[seleccion_obra_eliminar]
+
+        if st.button("Eliminar Obra", key="delete_obra_button"):
+            Obras.delete_one({"_id": obra_a_eliminar["_id"]})
+            st.success("❌ Obra eliminada")
+            st.rerun()
+    else:
+        st.info("No hay obras para eliminar.")
